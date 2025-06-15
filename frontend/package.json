@@ -1,0 +1,17 @@
+{
+  "name": "spotify-sync-frontend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": { "start": "webpack serve --mode development" },
+  "dependencies": {
+    "react": "^18",
+    "react-dom": "^18",
+    "socket.io-client": "^4"
+  },
+  "devDependencies": {
+    "webpack": "^5",
+    "babel-loader": "^8",
+    "@babel/core": "^7",
+    "@babel/preset-react": "^7"
+  }
+}
