@@ -1,19 +1,21 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
-const { exchangeCodeForTokens } = require('./spotifyAuth');
+import dotenv from 'dotenv';
+import express from 'express';
+import http from 'http';
+import { WebSocketServer } from 'ws';
+import { exchangeCodeForTokens } from './spotifyAuth.js'; // Note the .js extension
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
 
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
 const rooms = {}; // roomId → [WebSocket clients]
 
-wss.on('connection', ws => {
-  ws.on('message', msg => {
+wss.on('connection', (ws) => {
+  ws.on('message', (msg) => {
     const { roomId, action, data } = JSON.parse(msg);
     rooms[roomId] = rooms[roomId] || [];
     rooms[roomId].push(ws);
