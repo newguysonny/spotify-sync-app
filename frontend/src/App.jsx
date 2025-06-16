@@ -1,86 +1,142 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { spotifyPlayerInit } from './spotifyPlayer';
 
-export default function App() {
+export default function App({ socket }) {
   const [player, setPlayer] = useState(null);
-  const [ws, setWs] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [currentTrack, setCurrentTrack] = useState(null);
 
-  // Memoized send function
-  const send = useCallback((action) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ roomId: 'room1', action }));
-    } else {
-      console.error('WebSocket is not connected');
-    }
-  }, [ws]);
-
+  // Initialize Spotify Player
   useEffect(() => {
     const token = localStorage.getItem('spotifyAccessToken');
     if (!token) return;
 
-    // Initialize Spotify player
     spotifyPlayerInit(token)
-      .then(setPlayer)
-      .catch(error => console.error('Player initialization failed:', error));
-
-    // Initialize WebSocket
-    const socket = new WebSocket('ws://charismatic-recreation-production.up.railway.app:8080');
-    
-    socket.onopen = () => {
-      setIsConnected(true);
-      console.log('WebSocket connected');
-    };
-    
-    socket.onmessage = (msg) => {
-      try {
-        const { action } = JSON.parse(msg.data);
-        if (!player) return;
+      .then(player => {
+        setPlayer(player);
         
-        if (action === 'play') player.resume();
-        if (action === 'pause') player.pause();
-      } catch (error) {
-        console.error('Error processing WebSocket message:', error);
-      }
-    };
-    
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-    
-    socket.onclose = () => {
-      setIsConnected(false);
-      console.log('WebSocket disconnected');
-    };
+        // Set up player event listeners
+        player.addListener('player_state_changed', state => {
+          if (state?.track_window?.current_track) {
+            setCurrentTrack(state.track_window.current_track);
+            // Broadcast track change to room
+            socket.send(JSON.stringify({
+              roomId: 'default',
+              action: 'TRACK_UPDATE',
+              data: state.track_window.current_track
+            }));
+          }
+        });
+      })
+      .catch(error => {
+        console.error('Player initialization error:', error);
+        socket.send(JSON.stringify({
+          type: 'ERROR',
+          message: 'Player init failed'
+        }));
+      });
 
-    setWs(socket);
-
-    // Cleanup function
     return () => {
-      if (socket) {
-        socket.close();
-      }
       if (player) {
-        // Add any necessary player cleanup here
+        player.disconnect();
       }
     };
-  }, [player]); // Added player as dependency
+  }, []);
+
+  // WebSocket message handler
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleMessage = (event) => {
+      try {
+        const { action, data } = JSON.parse(event.data);
+        
+        switch (action) {
+          case 'PLAY':
+            player?.resume();
+            break;
+          case 'PAUSE':
+            player?.pause();
+            break;
+          case 'SYNC_TRACK':
+            if (data?.uri) {
+              player?.activateElement().then(() => {
+                player?.play({ uris: [data.uri] });
+              });
+            }
+            break;
+          default:
+            console.log('Unhandled action:', action);
+        }
+      } catch (error) {
+        console.error('Message handling error:', error);
+      }
+    };
+
+    socket.onmessage = handleMessage;
+    socket.onopen = () => setIsConnected(true);
+    socket.onclose = () => setIsConnected(false);
+
+    return () => {
+      socket.onmessage = null;
+    };
+  }, [player, socket]);
+
+  // Send actions to server
+  const sendAction = useCallback((action, data = {}) => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        roomId: 'default',
+        action,
+        data
+      }));
+    }
+  }, [socket]);
+
+  // UI Controls
+  const handlePlay = () => sendAction('PLAY');
+  const handlePause = () => sendAction('PAUSE');
+  const handleSync = () => {
+    if (currentTrack) {
+      sendAction('SYNC_TRACK', { uri: currentTrack.uri });
+    }
+  };
 
   return (
-    <div>
-      <p>WebSocket status: {isConnected ? 'Connected' : 'Disconnected'}</p>
-      <button 
-        onClick={() => send('play')} 
-        disabled={!isConnected}
-      >
-        Play
-      </button>
-      <button 
-        onClick={() => send('pause')} 
-        disabled={!isConnected}
-      >
-        Pause
-      </button>
+    <div className="app-container">
+      <div className="connection-status">
+        WebSocket: {isConnected ? '✅ Connected' : '❌ Disconnected'}
+      </div>
+      
+      {player ? (
+        <div className="player-controls">
+          <button onClick={handlePlay}>Play</button>
+          <button onClick={handlePause}>Pause</button>
+          {currentTrack && (
+            <button onClick={handleSync}>
+              Sync "{currentTrack.name}" to Room
+            </button>
+          )}
+          
+          {currentTrack && (
+            <div className="now-playing">
+              <img 
+                src={currentTrack.album.images[0]?.url} 
+                alt="Album cover" 
+                width={100}
+              />
+              <div>
+                <h3>{currentTrack.name}</h3>
+                <p>{currentTrack.artists.map(a => a.name).join(', ')}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="auth-message">
+          Please authenticate with Spotify
+        </div>
+      )}
     </div>
   );
 }
