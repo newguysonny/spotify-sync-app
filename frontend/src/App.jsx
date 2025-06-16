@@ -11,7 +11,7 @@ export default function App() {
 
     spotifyPlayerInit(token).then(setPlayer);
 
-    const socket = new WebSocket('ws://localhost:4000');
+    const socket = new WebSocket('ws://charismatic-recreation-production.up.railway.app:8080');
     socket.onmessage = msg => {
       const { action } = JSON.parse(msg.data);
       if (!player) return;
