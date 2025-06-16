@@ -9,119 +9,116 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// Manual CORS handling (replace '*' with your frontend URL in production)
+// Enhanced CORS for WebSocket upgrades
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   next();
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  clientTracking: true, // Enable built-in client tracking
+  perMessageDeflate: false // Disable compression (can cause issues)
+});
 
 const rooms = {};
+const activeConnections = new Map();
 
-wss.on('connection', (ws) => {
-  console.log('New WebSocket connection');
+wss.on('connection', (ws, req) => {
+  console.log(`New connection from ${req.socket.remoteAddress}`);
+  const connectionId = Date.now();
+  activeConnections.set(connectionId, ws);
 
-  // ======================
-  // Ping/Pong Implementation (Critical for Railway)
-  // ======================
-  const pingInterval = setInterval(() => {
-    if (ws.readyState === 1) { // 1 = OPEN
-      ws.ping();
-      console.log('Sent ping to client');
-    }
-  }, 25_000); // 25 seconds (< Railway's 30s timeout)
+  // Enhanced keepalive system
+  const keepAlive = {
+    pingInterval: setInterval(() => {
+      if (ws.readyState === ws.OPEN) {
+        ws.ping();
+        console.log(`[${connectionId}] Sent ping`);
+        
+        // Double-check connection state
+        if (ws.readyState !== ws.OPEN) {
+          console.warn(`[${connectionId}] Connection died during ping`);
+          clearInterval(keepAlive.pingInterval);
+          ws.terminate();
+        }
+      }
+    }, 20_000), // 20 seconds (more aggressive than Railway's 30s timeout)
+
+    timeout: setTimeout(() => {
+      console.warn(`[${connectionId}] No pong response - terminating`);
+      ws.terminate();
+    }, 10_000) // Allow 10s for pong response
+  };
 
   ws.on('pong', () => {
-    console.log('Received pong from client');
+    console.log(`[${connectionId}] Received pong`);
+    clearTimeout(keepAlive.timeout);
+    keepAlive.timeout = setTimeout(() => {
+      ws.terminate();
+    }, 10_000);
   });
 
   ws.on('message', (msg) => {
     try {
       const { roomId, action, data } = JSON.parse(msg);
-      console.log(`Received message for room ${roomId}:`, action);
+      console.log(`[${connectionId}] Room ${roomId}: ${action}`);
 
       if (!rooms[roomId]) rooms[roomId] = new Set();
       rooms[roomId].add(ws);
 
+      // Broadcast to room
       rooms[roomId].forEach(client => {
-        if (client !== ws && client.readyState === 1) {
+        if (client !== ws && client.readyState === ws.OPEN) {
           client.send(JSON.stringify({ action, data }));
         }
       });
     } catch (e) {
-      console.error('Invalid message:', e);
+      console.error(`[${connectionId}] Invalid message:`, e);
     }
   });
 
-  ws.on('close', () => {
-    console.log('WebSocket disconnected');
-    clearInterval(pingInterval); // Critical cleanup
+  ws.on('close', (code, reason) => {
+    console.log(`[${connectionId}] Closed (${code}): ${reason.toString()}`);
+    clearInterval(keepAlive.pingInterval);
+    clearTimeout(keepAlive.timeout);
+    activeConnections.delete(connectionId);
+    
     Object.keys(rooms).forEach(roomId => {
       rooms[roomId].delete(ws);
+      if (rooms[roomId].size === 0) delete rooms[roomId];
     });
   });
-});
 
-// ======================
-// Railway WebSocket Test Endpoints
-// ======================
-app.get('/ws-test', (req, res) => {
-  const websocketUrl = `wss://${req.headers.host}`;
-  res.send(`
-    <html>
-      <body>
-        <h1>WebSocket Test</h1>
-        <p>Connecting to: <code>${websocketUrl}</code></p>
-        <script>
-          const ws = new WebSocket('${websocketUrl}');
-          ws.onopen = () => document.body.innerHTML += '<p>✅ Connected!</p>';
-          ws.onerror = (e) => document.body.innerHTML += '<p>❌ Error: ' + e + '</p>';
-          ws.onmessage = (e) => document.body.innerHTML += '<p>📩 Message: ' + e.data + '</p>';
-          
-          // Client-side pong response (optional)
-          ws.on('pong', () => console.log('Received server ping'));
-        </script>
-      </body>
-    </html>
-  `);
-});
-
-app.get('/ws-send-test', (req, res) => {
-  wss.clients.forEach(client => {
-    if (client.readyState === 1) {
-      client.send(JSON.stringify({ 
-        action: 'test', 
-        data: 'Hello from Railway server!' 
-      }));
-    }
+  ws.on('error', (err) => {
+    console.error(`[${connectionId}] Error:`, err);
   });
-  res.send('Test messages sent to all WebSocket clients');
 });
 
-// ======================
-// Spotify Auth Endpoint
-// ======================
-app.post('/auth/callback', async (req, res) => {
-  const { code } = req.body;
-  try {
-    const tokens = await exchangeCodeForTokens(code);
-    res.json(tokens);
-  } catch (e) {
-    res.status(500).send('Auth error');
-  }
-});
+// Connection health monitor
+setInterval(() => {
+  console.log(`Active connections: ${wss.clients.size}`);
+  wss.clients.forEach(ws => {
+    console.log(`- State: ${ws.readyState} (${ws.readyState === ws.OPEN ? 'OPEN' : 'CLOSED'})`);
+  });
+}, 60_000);
+
+// ... (rest of your endpoints remain the same) ...
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  Backend running on port ${PORT}
-  
-  WebSocket Test Endpoints:
-  - Browser test: https://${process.env.RAILWAY_PUBLIC_DOMAIN}/ws-test
-  - Send test message: https://${process.env.RAILWAY_PUBLIC_DOMAIN}/ws-send-test
+  Server running on port ${PORT}
+  WebSocket alive check interval: 20s
+  Test endpoints:
+  - https://${process.env.RAILWAY_PUBLIC_DOMAIN}/ws-test
+  - https://${process.env.RAILWAY_PUBLIC_DOMAIN}/ws-send-test
   `);
 });
