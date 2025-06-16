@@ -4,7 +4,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: 'dist', // Vercel expects this
+    outDir: 'dist',
     emptyOutDir: true
+  },
+  define: {
+    'process.env': {}
   }
 })
