@@ -25,6 +25,20 @@ const rooms = {};
 wss.on('connection', (ws) => {
   console.log('New WebSocket connection');
 
+  // ======================
+  // Ping/Pong Implementation (Critical for Railway)
+  // ======================
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === 1) { // 1 = OPEN
+      ws.ping();
+      console.log('Sent ping to client');
+    }
+  }, 25_000); // 25 seconds (< Railway's 30s timeout)
+
+  ws.on('pong', () => {
+    console.log('Received pong from client');
+  });
+
   ws.on('message', (msg) => {
     try {
       const { roomId, action, data } = JSON.parse(msg);
@@ -45,6 +59,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('WebSocket disconnected');
+    clearInterval(pingInterval); // Critical cleanup
     Object.keys(rooms).forEach(roomId => {
       rooms[roomId].delete(ws);
     });
@@ -55,7 +70,7 @@ wss.on('connection', (ws) => {
 // Railway WebSocket Test Endpoints
 // ======================
 app.get('/ws-test', (req, res) => {
-  const websocketUrl = `wss://${req.headers.host}`; // Auto-detect Railway URL
+  const websocketUrl = `wss://${req.headers.host}`;
   res.send(`
     <html>
       <body>
@@ -66,6 +81,9 @@ app.get('/ws-test', (req, res) => {
           ws.onopen = () => document.body.innerHTML += '<p>✅ Connected!</p>';
           ws.onerror = (e) => document.body.innerHTML += '<p>❌ Error: ' + e + '</p>';
           ws.onmessage = (e) => document.body.innerHTML += '<p>📩 Message: ' + e.data + '</p>';
+          
+          // Client-side pong response (optional)
+          ws.on('pong', () => console.log('Received server ping'));
         </script>
       </body>
     </html>
