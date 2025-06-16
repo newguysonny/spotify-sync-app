@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 import express from 'express';
-import cors from 'cors';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import { exchangeCodeForTokens } from './spotifyAuth.js';
@@ -8,8 +7,15 @@ import { exchangeCodeForTokens } from './spotifyAuth.js';
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: '*' }));
 app.use(express.json());
+
+// Manual CORS handling (replace '*' with your frontend URL in production)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -46,15 +52,17 @@ wss.on('connection', (ws) => {
 });
 
 // ======================
-// Manual Testing Endpoints
+// Railway WebSocket Test Endpoints
 // ======================
 app.get('/ws-test', (req, res) => {
+  const websocketUrl = `wss://${req.headers.host}`; // Auto-detect Railway URL
   res.send(`
     <html>
       <body>
         <h1>WebSocket Test</h1>
+        <p>Connecting to: <code>${websocketUrl}</code></p>
         <script>
-          const ws = new WebSocket('wss://${req.headers.host}');
+          const ws = new WebSocket('${websocketUrl}');
           ws.onopen = () => document.body.innerHTML += '<p>✅ Connected!</p>';
           ws.onerror = (e) => document.body.innerHTML += '<p>❌ Error: ' + e + '</p>';
           ws.onmessage = (e) => document.body.innerHTML += '<p>📩 Message: ' + e.data + '</p>';
@@ -69,7 +77,7 @@ app.get('/ws-send-test', (req, res) => {
     if (client.readyState === 1) {
       client.send(JSON.stringify({ 
         action: 'test', 
-        data: 'Hello from server!' 
+        data: 'Hello from Railway server!' 
       }));
     }
   });
@@ -94,8 +102,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`
   Backend running on port ${PORT}
   
-  Test WebSocket connections:
-  - Browser test: https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost:' + PORT}/ws-test
-  - Send test message: https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost:' + PORT}/ws-send-test
+  WebSocket Test Endpoints:
+  - Browser test: https://${process.env.RAILWAY_PUBLIC_DOMAIN}/ws-test
+  - Send test message: https://${process.env.RAILWAY_PUBLIC_DOMAIN}/ws-send-test
   `);
 });
