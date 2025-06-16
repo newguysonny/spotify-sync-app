@@ -1,17 +1,33 @@
 {
   "name": "spotify-sync-frontend",
+  "private": true,
   "version": "1.0.0",
-  "main": "src/index.js",
-  "scripts": { "start": "webpack serve --mode development" },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext js,jsx --fix"
+  },
   "dependencies": {
-    "react": "^18",
-    "react-dom": "^18",
-    "socket.io-client": "^4"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io-client": "^4.7.2"
   },
   "devDependencies": {
-    "webpack": "^5",
-    "babel-loader": "^8",
-    "@babel/core": "^7",
-    "@babel/preset-react": "^7"
-  }
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "vite": "^5.1.4"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not ie 11",
+    "not op_mini all"
+  ]
 }
