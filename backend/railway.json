@@ -1,0 +1,22 @@
+{
+  "builds": [
+    {
+      "src": "src/index.js",
+      "use": "@railway/node"
+    }
+  ],
+  "variables": {
+    "PORT": {
+      "description": "Port to listen on",
+      "value": "4000"
+    },
+    "SPOTIFY_CLIENT_ID": {
+      "description": "Spotify API Client ID",
+      "required": true
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "description": "Spotify API Client Secret",
+      "required": true
+    }
+  }
+}
