@@ -2,20 +2,13 @@
   "name": "spotify-sync-backend",
   "version": "1.0.0",
   "main": "src/index.js",
-  "type": "module",         
+  "type": "module",
   "engines": {
-    "node": ">=16.x"        
+    "node": ">=16.x"
   },
-  
-  "builds": [
-    {
-      "src": "src/index.js",
-      "use": "@railway/node"
-    }
-  ],
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"  
+    "dev": "nodemon src/index.js"
   },
   "dependencies": {
     "express": "^4",
@@ -24,6 +17,6 @@
     "ws": "^8"
   },
   "devDependencies": {
-    "nodemon": "^3"         
+    "nodemon": "^3"
   }
 }
